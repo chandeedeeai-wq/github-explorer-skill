@@ -31,6 +31,8 @@ cd ~/.openclaw/skills/
 git clone https://github.com/blessonism/github-explorer-skill.git github-explorer
 ```
 
+如果你更重视供应链可控性，优先使用你自己已经 review 过的 fork 或本地 clone，不要直接追上游最新 HEAD。
+
 ### 依赖 Skills（强烈建议安装）
 
 本 Skill 会调用以下 OpenClaw 内置工具（无需额外安装）：`web_search`、`web_fetch`、`browser`
