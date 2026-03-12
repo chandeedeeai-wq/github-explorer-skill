@@ -26,25 +26,32 @@ description: >
     --queries "<project_name> review" "<project_name> 评测 使用体验" \
     --mode deep --intent exploratory --num 5
   ```
-- 用 `web_fetch` 抓取 repo 主页获取基础信息（README、Stars、Forks、License、最近更新）
+- 优先用 `gh api` 获取 repo 基础信息（README、Stars、Forks、License、最近更新）；不要直接抓 GitHub repo 页面壳子。
 
 ### Phase 2: 多源采集（并行）
 
-**⚠️ GitHub 页面抓取规则（强制）**：GitHub repo 页面是 SPA（客户端渲染），`web_fetch` 只能拿到导航栏壳子，**禁止用 web_fetch 抓 github.com 的 repo 页面**。一律使用 GitHub API：
-- README: `curl -s -H "Authorization: token {PAT}" -H "Accept: application/vnd.github.v3.raw" "https://api.github.com/repos/{owner}/{repo}/readme"`
-- Repo 元数据: `curl -s -H "Authorization: token {PAT}" "https://api.github.com/repos/{owner}/{repo}"`
-- Issues: `curl -s -H "Authorization: token {PAT}" "https://api.github.com/repos/{owner}/{repo}/issues?state=all&sort=comments&per_page=10"`
-- Commits: `curl -s -H "Authorization: token {PAT}" "https://api.github.com/repos/{owner}/{repo}/commits?per_page=10"`
-- File tree: `curl -s -H "Authorization: token {PAT}" "https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"`
+**⚠️ GitHub 页面抓取规则（强制）**：GitHub repo 页面是 SPA（客户端渲染），`web_fetch` 只能拿到导航栏壳子，**禁止用 `web_fetch` 抓 `github.com` 的 repo 页面**。优先使用当前主机已登录的 `gh` CLI，通过 GitHub API 取数据；这样可避免把 PAT 直接拼进命令行、shell history 或日志。
+- 先检查认证：`/home/leo/.local/bin/gh auth status`
+- README: `/home/leo/.local/bin/gh api -H "Accept: application/vnd.github.v3.raw" repos/{owner}/{repo}/readme`
+- Repo 元数据: `/home/leo/.local/bin/gh api repos/{owner}/{repo}`
+- Issues: `/home/leo/.local/bin/gh api "repos/{owner}/{repo}/issues?state=all&sort=comments&per_page=10"`
+- Commits: `/home/leo/.local/bin/gh api "repos/{owner}/{repo}/commits?per_page=10"`
+- File tree: `/home/leo/.local/bin/gh api "repos/{owner}/{repo}/git/trees/{branch}?recursive=1"`
 
-PAT 见 TOOLS.md。
+认证规则：
+- 优先复用本机 `gh` 登录态。
+- 只有当运行时已经安全注入 `GH_TOKEN` / `GITHUB_TOKEN`，且 `gh` 不可用时，才允许改走环境变量方案。
+- **禁止**把 PAT 明文直接写进 `curl -H "Authorization: ..."` 命令。
+- **禁止**在输出、日志或回执中回显 token、Authorization header 或完整敏感命令。
+
+GitHub 认证与可用性判断见 TOOLS.md。
 
 以下来源**按需检查**，有则采集，无则跳过：
 
 | 来源 | URL 模式 | 采集内容 | 建议工具 |
 |---|---|---|---|
-| GitHub Repo | `github.com/{org}/{repo}` | README、About、Contributors | `web_fetch` |
-| GitHub Issues | `github.com/{org}/{repo}/issues?q=sort:comments` | Top 3-5 高质量 Issue | `browser` |
+| GitHub Repo | `github.com/{org}/{repo}` | README、About、Contributors、Stars、Forks、License | `gh api` |
+| GitHub Issues | `github.com/{org}/{repo}/issues?q=sort:comments` | Top 3-5 高质量 Issue | `gh api` / `browser` |
 | 中文社区 | 微信/知乎/小红书 | 深度评测、使用经验 | `content-extract` |
 | 技术博客 | Medium/Dev.to | 技术架构分析 | `web_fetch` / `content-extract` |
 | 讨论区 | V2EX/Reddit | 用户反馈、槽点 | `search-layer`（Deep 模式） |
@@ -187,7 +194,8 @@ content-extract 内部会：
 
 ## Execution Notes
 
-- 优先使用 `web_search` + `web_fetch`，browser 作为备选
+- 优先使用 `web_search` + `gh api` 获取 GitHub 数据；`browser` 作为动态页面备选，`web_fetch` 不用于 GitHub repo 主页面。
+- 严禁在命令行、日志、回复内容中暴露 GitHub PAT、Authorization header 或其他敏感认证信息。
 - **搜索增强**：项目调研类任务默认使用 `search-layer` v2 Deep 模式 + `--intent exploratory`（Brave + Exa + Tavily 三源并行去重 + 意图感知评分），单源失败不阻塞主流程
 - **抓取降级（强制）**：当 `web_fetch` 失败/403/反爬页/正文过短，或来源域名属于高风险站点（如微信/知乎/小红书）时：改用 `content-extract`（其内部会 fallback 到 MinerU-HTML），拿到更干净的 Markdown + 可追溯 sources
 - 并行采集不同来源以提高效率
